@@ -1,3 +1,4 @@
 secrets/
 __py_cache__
-.vscode/`
+.vscode/
+qdrant_data/
