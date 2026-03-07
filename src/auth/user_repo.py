@@ -1,0 +1,102 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, func
+from src.db.user  import User
+from src.auth.schemas.user import UserBase, UserLogin, UserRead, UserCreate
+from uuid import UUID
+from src.core.security import get_password_hash
+class UserRepository():
+    def __init__(self, session:AsyncSession ) -> User | None:
+        self.session = session
+
+    async def find_user_email(self, user_email: str)-> UserRead | None:
+        query = select(User).where(User.email == user_email)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+    
+    async def find_username(self, username : str)-> UserRead | None:
+        query = select(User).where(User.username == username)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+    
+    
+    async def create_user(self, user_data : UserCreate) -> User | None:
+        new_user = User(
+            email = user_data.email,
+            username = user_data.username,
+            hashed_password= get_password_hash(user_data.password.get_secret_value())
+        )
+        self.session.add(new_user)
+        await self.session.flush()
+        await self.session.refresh(new_user)
+        return new_user
+    async def find_user_by_id(self, user_id : UUID)-> UserRead:
+        query = select(User).where(User.id == user_id)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+    
+    async def get_top_players(self, limit: int = 10):
+        query = select(User).order_by(User.reputation.desc()).limit(limit)
+        result = await self.session.execute(query)
+        return result.scalars().all()
+
+    async def update_user_by_id(self, user_id : UUID, update_data: dict):
+        query = (
+        update(User)
+        .where(User.id == user_id)
+        .values(**update_data) 
+        .returning(User)
+    )
+    
+        result = await self.session.execute(query)
+        updated_user = result.scalar_one_or_none() 
+    
+        if updated_user:
+            await self.session.commit()
+
+            await self.session.refresh(updated_user) 
+        else:
+
+            await self.session.rollback()
+        
+        return updated_user
+
+    async def adjust_user_balance(self, user_id: UUID, echoes_delta: int, shards_delta: int):
+        query = (
+            update(User)
+            .where(User.id == user_id)
+            .values(
+            wallet_echoes=User.wallet_echoes + echoes_delta,
+            shards=User.shards + shards_delta
+            )
+            .returning(User)
+        )
+        result = await self.session.execute(query)
+        await self.session.commit()
+        return result.scalar_one_or_none()
+    async def get_all_users(self, skip: int, limit: int):
+        query = select(User).offset(skip).limit(limit)
+        result = await self.session.execute(query)
+        return result.scalars().all()
+
+    async def adjust_user_balance(self, user_id: UUID, echoes: int, shards: int):
+        query = (
+            update(User)
+            .where(User.id == user_id)
+            .values(
+                wallet_echoes=User.wallet_echoes + echoes,
+                shards=User.shards + shards
+            )
+            .returning(User)
+        )
+        result = await self.session.execute(query)
+        await self.session.commit()
+        return result.scalar_one_or_none()
+
+    async def get_admin_stats(self):
+        query = select(
+            func.count(User.id).label("total_users"),
+            func.coalesce(func.sum(User.wallet_echoes), 0).label("total_economy"),
+            func.count(User.id).filter(User.is_superuser == True).label("admins_count")
+        )
+        result = await self.session.execute(query)
+        return result.mappings().one()

@@ -55,7 +55,7 @@ class PostgresSettings(SharedBaseSettings):
     Налаштування тільки для баз даних
     """
     POSTGRES_HOST_FILE: Optional[str] = None
-    POSTGRES_HOST: str = "localhost"
+    POSTGRES_HOST: str = "llm_chat_db"
     
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "postgres"
@@ -90,3 +90,6 @@ class RedisSettings(SharedBaseSettings):
     def REDIS_URL(self) -> str:
         password = self._get_secret_value(self.REDIS_PASSWORD_FILE, self.REDIS_PASSWORD, "password")
         return f"redis://:{password}@{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+    
+class QdrantSettings(SharedBaseSettings):
+    QDRANT_COLLECTION: str = "user_knowledge_base"

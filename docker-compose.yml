@@ -1,4 +1,14 @@
-
+x-db-access: &db-access
+  environment:
+    POSTGRES_USER_FILE: /run/secrets/postgres_chat_login
+    POSTGRES_HOST_FILE: /run/secrets/postgres_chat_host_name
+    POSTGRES_PASSWORD_FILE: /run/secrets/postgres_chat_password
+    POSTGRES_DB_FILE: /run/secrets/postgres_chat_db_name
+  secrets:
+    - postgres_chat_db_name
+    - postgres_chat_login
+    - postgres_chat_password
+    - postgres_chat_host_name
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -17,6 +27,7 @@ services:
     volumes:
       - ./qdrant_data:/qdrant/storage
   llm_chat_db:
+    <<: *db-access
     image: postgres:13
     container_name: llm_chat_db
     healthcheck:
@@ -25,16 +36,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    environment:
-      POSTGRES_USER_FILE: /run/secrets/postgres_chat_login
-      POSTGRES_HOST_FILE: /run/secrets/postgres_chat_host_name
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_chat_password
-      POSTGRES_DB_FILE: /run/secrets/postgres_chat_db_name
-    secrets:
-     - postgres_chat_db_name
-     - postgres_chat_login
-     - postgres_chat_password
-     - postgres_chat_host_name
     ports:
     - "5434:5432"
     volumes:
@@ -57,12 +58,15 @@ services:
       - 8.8.8.8
       - 1.1.1.1
   llm_ml_worker:
+    <<: *db-access
     build:
       context: .
       dockerfile: src/Dockerfile
     depends_on:
       llm_redis:
         condition: service_healthy
+    volumes:
+     - .:/files
     command: celery -A src.worker.celery_app worker --loglevel=info
   llm_redis:
     image: redis:8.6-alpine
@@ -80,14 +84,19 @@ services:
     volumes:
      - redis:/data 
   llm_api:
+    <<: *db-access
     build:
       context: .
       dockerfile: src/Dockerfile 
     container_name: llm_api
+    depends_on:                     
+      llm_chat_db:                  
+        condition: service_healthy  
     ports:
       - '8000:8000'
     volumes:
       - .:/app
+      - .:/files
     command:
       sh -c "uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
 secrets:
@@ -105,6 +114,7 @@ volumes:
   redis:
   ollama_data:
   postgres_chat_data:
+  files:
 configs:
   qdrant_config:
     content: |
