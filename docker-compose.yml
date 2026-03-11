@@ -78,7 +78,7 @@ services:
       retries: 5
     ports:
      - '6377:6379'
-    command: sh -c "redis-server --save 20 1 --loglevel warning --requirepass $$(cat /run/secrets/redis_password)"
+    command: sh -c "redis-server --save 20 1 --loglevel notice --requirepass $$(cat /run/secrets/redis_password) --appendonly yes --maxmemory-policy volatile-ttl --maxmemory 512mb"
     secrets:
      - redis_password
     volumes:

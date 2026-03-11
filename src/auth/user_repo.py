@@ -14,7 +14,7 @@ class UserRepository():
         return result.scalar_one_or_none()
     
     async def find_username(self, username : str)-> UserRead | None:
-        query = select(User).where(User.username == username)
+        query = select(User).where(func.lower(User.username) == func.lower(username))
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
     
@@ -59,44 +59,7 @@ class UserRepository():
             await self.session.rollback()
         
         return updated_user
-
-    async def adjust_user_balance(self, user_id: UUID, echoes_delta: int, shards_delta: int):
-        query = (
-            update(User)
-            .where(User.id == user_id)
-            .values(
-            wallet_echoes=User.wallet_echoes + echoes_delta,
-            shards=User.shards + shards_delta
-            )
-            .returning(User)
-        )
-        result = await self.session.execute(query)
-        await self.session.commit()
-        return result.scalar_one_or_none()
     async def get_all_users(self, skip: int, limit: int):
         query = select(User).offset(skip).limit(limit)
         result = await self.session.execute(query)
         return result.scalars().all()
-
-    async def adjust_user_balance(self, user_id: UUID, echoes: int, shards: int):
-        query = (
-            update(User)
-            .where(User.id == user_id)
-            .values(
-                wallet_echoes=User.wallet_echoes + echoes,
-                shards=User.shards + shards
-            )
-            .returning(User)
-        )
-        result = await self.session.execute(query)
-        await self.session.commit()
-        return result.scalar_one_or_none()
-
-    async def get_admin_stats(self):
-        query = select(
-            func.count(User.id).label("total_users"),
-            func.coalesce(func.sum(User.wallet_echoes), 0).label("total_economy"),
-            func.count(User.id).filter(User.is_superuser == True).label("admins_count")
-        )
-        result = await self.session.execute(query)
-        return result.mappings().one()

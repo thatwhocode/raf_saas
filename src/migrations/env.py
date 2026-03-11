@@ -8,7 +8,8 @@ sys.path.insert(0, "/app")
 from alembic import context
 
 from src.db.database import Base, settings
-from src.db.user import User # Обов'язково імпортуй саму модель!
+from src.db.user import User 
+from src.db.chat import Chat, Message, UserChat
 target_metadata = Base.metadata
 
 config = context.config

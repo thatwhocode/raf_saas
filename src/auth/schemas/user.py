@@ -28,7 +28,7 @@ class UserLoginUsername(CoreModel):
     username: str
     password: SecretStr
 class UserLogin(UserLoginUsername):
-    email: EmailStr
+    username: str
 class UserUpdate(CoreModel):
     username : str
 class UserShort(CoreModel):

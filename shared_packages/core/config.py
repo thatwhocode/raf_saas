@@ -92,4 +92,23 @@ class RedisSettings(SharedBaseSettings):
         return f"redis://:{password}@{self.REDIS_HOST}:{self.REDIS_PORT}/0"
     
 class QdrantSettings(SharedBaseSettings):
+    QDRANT_HOST: str = "qdrant"
+    QDRANT_PORT: int = 6333
     QDRANT_COLLECTION: str = "user_knowledge_base"
+
+    @computed_field
+    @property
+    def QDRANT_URL(self) -> str:
+        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
+
+class LLMSettings(SharedBaseSettings):
+    """ Налаштування для локальних/хмарних моделей """
+    OLLAMA_HOST: str = "ollama"
+    OLLAMA_PORT: int = 11434
+    EMBED_MODEL: str = "nomic-embed-text"
+    CHAT_MODEL: str = "llama3"
+
+    @computed_field
+    @property
+    def OLLAMA_URL(self) -> str:
+        return f"http://{self.OLLAMA_HOST}:{self.OLLAMA_PORT}"

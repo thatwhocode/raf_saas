@@ -1,40 +1,72 @@
-from src.auth.auth_service import AuthService
-from src.auth.user_repo import UserRepository
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
-from src.db.database import get_db
-from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.db.database import get_db
 from src.db.user import User
-from fastapi import HTTPException, status
-
+from src.auth.user_repo import UserRepository
+from src.auth.auth_service import AuthService
+from src.services.redis import RedisService
+from shared_packages.core.security import decode_access_token
+from src.chat.repositories.chat_repo import ChatRepository
+from src.chat.repositories.message_repo import MessageRepository
+from src.chat.repositories.access_repo import AccessRepository
+from src.chat.services.chat_service import ChatService
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="v1/auth/token")
-class Dependencies:
-    def __init__(self, db : AsyncSession =Depends(get_db)):
-        self.db = db
+
+
+def get_redis_service(request: Request) -> RedisService:
+    return request.app.state.redis
+
+def get_user_repo(db: AsyncSession = Depends(get_db)) -> UserRepository:
+    return UserRepository(db)
+
+def get_chat_repo(db: AsyncSession = Depends(get_db)) -> ChatRepository:
+    return ChatRepository(db)
+
+def get_message_repo(db: AsyncSession = Depends(get_db)) -> MessageRepository:
+    return MessageRepository(db)
+
+def get_access_repo(db: AsyncSession = Depends(get_db))-> AccessRepository:
+    return AccessRepository(db
+                            )
+def get_auth_service(user_repo: UserRepository = Depends(get_user_repo)) -> AuthService:
+    return AuthService(user_repo)
+
+def get_chat_service(
+    chat_repo: ChatRepository = Depends(get_chat_repo), 
+    message_repo: MessageRepository = Depends(get_message_repo), 
+    access_repo: AccessRepository = Depends(get_access_repo), 
+    db: AsyncSession = Depends(get_db)
+):
+    return ChatService(db, chat_repo, access_repo, message_repo)
+
+async def get_validated_payload(
+    token: str = Depends(oauth2_scheme),
+    redis: RedisService = Depends(get_redis_service)
+) -> dict:
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    jti = payload.get("jti")
+    if not jti:
+        raise HTTPException(status_code=401, detail="Token missing JTI")
+
+    if await redis.is_in_blacklist(jti):
+        raise HTTPException(status_code=401, detail="Token revoked")
+
+    return payload
+
+
+async def get_current_user(
+    payload: dict = Depends(get_validated_payload),
+    auth_service: AuthService = Depends(get_auth_service)
+) -> User:
+    """Дістає юзера з бази на основі вже ПЕРЕВІРЕНОГО токена"""
+    user_id = payload.get("sub") 
+    user = await auth_service.user_repo.find_user_by_id(user_id) 
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
         
-    @property
-    def user_repo(self) -> UserRepository:
-        return UserRepository(self.db)
-    @property
-    def auth_service(self) -> AuthService:
-        return AuthService(self.user_repo)
-    
-    async def get_current_user(self, token: str) -> User:
-        user = await self.auth_service.get_user_from_token(token)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return user
-class AdminRequired:
-    async def __call__(self, deps: Dependencies = Depends(), token:str = Depends(oauth2_scheme)):
-        user = await deps.auth_service.get_user_from_token(token)
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such user")
-        if not user.is_superuser:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="admin role required")
-        return user
-    
-    
+    return user

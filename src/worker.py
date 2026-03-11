@@ -4,26 +4,28 @@ from ollama import AsyncClient
 from qdrant_client import AsyncQdrantClient
 from adapters.qdrant_adapter import VectorStoreAdapter
 from adapters.ollama_adapter import LLMAdapter
-from shared_packages.core.config import QdrantSettings
-from uuid import UUID
+from shared_packages.core.config import QdrantSettings, LLMSettings
 import asyncio
+from uuid import UUID
 qdrrant_settings = QdrantSettings()
-
-ollama_client= AsyncClient(host="http://ollama:11434")
-qdrant_client = AsyncQdrantClient(url="http://qdrant:6333")
+ollama_settings = LLMSettings()
+ollama_client= AsyncClient(host=f"{ollama_settings.OLLAMA_URL}")
+qdrant_client = AsyncQdrantClient(url=f"{QdrantSettings.QDRANT_URL}")
         
 redis= RedisSettings()
 celery_app = Celery('hello', broker=redis.REDIS_URL, backend=redis.REDIS_URL)
 
 @celery_app.task(name='generate_text_task')
 def generate_text_task(prompt_text: str):
-    response = ollama_client.chat(model='llama3', messages=[
+    async def chat():
+        response =  await ollama_client.chat(model='llama3', messages=[])
         {
         'role': 'user',
         'content': f"{prompt_text}"
         },
-    ])
-    return response.message.content
+        return response.message.content
+    result_message = asyncio.run(chat())
+    return result_message
 @celery_app.task(bind=True, name='process_document_task')
 def process_document_task(self, file_path: str, user_id_str: str):
     try:
