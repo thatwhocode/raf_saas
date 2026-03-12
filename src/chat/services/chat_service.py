@@ -10,8 +10,8 @@ class ChatService():
         self.access_repo = access_repo
         self.message_repo = message_repo
         self.session = session # на майбутнє щоб комітити в сервісі
-    async def initiate_new_chat(self, user_id : uuid.UUID ):
-        chat = await self.chat_repo.create_chat(user_id=user_id)
+    async def initiate_new_chat(self, user_id : uuid.UUID, title : str ):
+        chat = await self.chat_repo.create_chat(user_id=user_id,title= title)
         return chat 
     
     async def get_chat_context(self, user_id: uuid.UUID, chat_id: uuid.UUID):
@@ -46,3 +46,12 @@ class ChatService():
         except Exception as e:
             await self.session.rollback()
             raise e
+    async def rename_chat(self, chat_id : uuid.UUID, new_title : str):
+        try:
+            return await self.chat_repo.update_chat_title(chat_id, new_title)
+        except Exception as e:
+            self.session.rollback()
+            raise e
+    async def is_first_message(self, chat_id:uuid.UUID):
+        if not await self.message_repo.get_history(chat_id=chat_id):
+            return True

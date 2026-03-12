@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends, status
 from fastapi.responses import StreamingResponse
 from src.worker import celery_app
 from src.core.dependencies import RagServiceFactory, RagService
@@ -12,7 +12,7 @@ from src.api.deps import get_current_user, get_chat_service, ChatService
 from src.db.user import User
 from ollama import AsyncClient
 from uuid import UUID
-from src.chat.schemas.chat import ChatResponse
+from src.chat.schemas.chat import ChatResponse, ChatUpdateTitle
 ollama = LLMSettings()
 rag_factory = RagServiceFactory(
     qdrant_url="http://qdrant:6333", 
@@ -25,12 +25,15 @@ UPLOAD_PATH : str  = "app/files"
 router = APIRouter()
 
 @router.post("/chat/stream")
-async def chat_stream(prompt: str, chat_id: UUID, user = Depends(get_current_user), chat_service = Depends(get_chat_service)):
-
+async def chat_stream(prompt: str, chat_id: UUID, user = Depends(get_current_user), chat_service: ChatService = Depends(get_chat_service)):
+    current_chat = await chat_service.chat_repo.get_chat_by_id(chat_id)
     context = await chat_service.get_chat_context(user.id, chat_id)
     
     context.append({'role': 'user', 'content': prompt})
 
+    if await chat_service.is_first_message(chat_id) == True and current_chat.title == "New Chat" :
+        from src.worker import rename_chat_automatically_task
+        rename_chat_automatically_task.delay(str(chat_id), prompt)
     async def generate():
         client = AsyncClient(host=f"{ollama.OLLAMA_URL}")
         full_response = ""
@@ -58,11 +61,11 @@ async def chat_stream(prompt: str, chat_id: UUID, user = Depends(get_current_use
     return StreamingResponse(generate(), media_type="text/plain")
 @router.post("/chats", response_model=ChatResponse)
 async def create_chat(user = Depends(get_current_user), chat_service : ChatService = Depends(get_chat_service)):
-    return await chat_service.initiate_new_chat(user.id)
+    return await chat_service.initiate_new_chat(user.id, title="New Chat")
 @router.get("/chats{limit}/{offset}", response_model=list[ChatResponse])
 async def create_chat(limit : int, offset : int ,user = Depends(get_current_user), chat_service: ChatService = Depends(get_chat_service)):
     return await chat_service.chat_repo.get_user_chats(user.id, limit, offset)
-@router.delete("/chat{chat_id}", response_model=list[ChatResponse])
+@router.delete("/chat{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def create_chat(chat_id : UUID ,user = Depends(get_current_user), chat_service: ChatService = Depends(get_chat_service)):
     return await chat_service.chat_repo.delete_chat(chat_id)
 @router.get("/status/{task_id}")
@@ -92,3 +95,6 @@ def upload_file(file : UploadFile=File(...), user : User = Depends(get_current_u
 async def chat_with_rag(data: UserRequest,  user : User = Depends(get_current_user), service: RagService = Depends(rag_factory)):
     answer = await service.chat_request(question=data.query, user_id=user.id, system_prompt=data.system_prompt)
     return {"answer": answer}
+@router.patch("chats/{chat_id}")
+async def rename_chat(chat_id : UUID, title : ChatUpdateTitle, chat_service : ChatService = Depends(get_chat_service)):
+    return await chat_service.rename_chat(chat_id, title.new_title)

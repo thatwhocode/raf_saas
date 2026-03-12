@@ -5,9 +5,9 @@ import uuid
 class ChatRepository():
     def __init__(self, session : AsyncSession):
         self.session = session
-    async def create_chat(self, user_id : uuid.UUID, title: str = ""):
+    async def create_chat(self, user_id : uuid.UUID, title):
         try:
-            title = title or "New Chat"
+            title = title 
             chat = Chat(title=title)
             self.session.add(chat)
             await self.session.flush()
@@ -38,7 +38,7 @@ class ChatRepository():
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
     async def update_chat_title(self, chat_id : uuid.UUID, chat_title : str):
-        query = update(Chat.title).where(Chat.id == chat_id).values(title = chat_title)
+        query = update(Chat).where(Chat.id == chat_id).values(title = chat_title)
         await self.session.execute(query)
         await self.session.commit()
         return True

@@ -5,3 +5,5 @@ class ChatResponse(CoreModel):
     id: uuid.UUID
     title: str
     created_at: datetime
+class ChatUpdateTitle(CoreModel):
+    new_title: str
